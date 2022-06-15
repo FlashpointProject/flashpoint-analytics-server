@@ -1,31 +1,29 @@
 version: '3.9'
 
 networks:
-  fpfssnetwork:
+  marketnetwork:
     driver: bridge
     ipam:
-      config:
-        - subnet: 10.50.0.0/16
-          gateway: 10.50.0.1
+     config:
+       - subnet: 10.5.0.0/16
+         gateway: 10.5.0.1
 
 services:
   database:
     container_name: ${DB_CONTAINER_NAME}
     restart: unless-stopped
-    image: mysql:8.0.25
+    image: timescale/timescaledb-ha:pg14-latest
     environment:
-      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
-      MYSQL_DATABASE: ${DB_NAME}
-      MYSQL_USER: ${DB_USER}
-      MYSQL_PASSWORD: ${DB_PASSWORD}
+      - POSTGRES_DB=${DB_NAME}
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
     ports:
-      - "3306:3306" # TODO unmap in prod
+      - "5432:5432" # TODO unmap in prod
     volumes:
-      - fpfssdb_data:/var/lib/mysql
+      - analytics-data:/var/lib/postgresql/data
     networks:
-      fpfssnetwork:
-        ipv4_address: 10.50.0.2
-    command: mysqld --max_allowed_packet=256M --sql_mode="STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION" --log_bin_trust_function_creators=1
+      marketnetwork:
+        ipv4_address: 10.5.0.2
 
 volumes:
-  fpfssdb_data:
+  analytics-data:

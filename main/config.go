@@ -4,17 +4,18 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+
+	"github.com/sirupsen/logrus"
 )
 
 type Config struct {
-	Port           int64
-	DBRootUser     string
-	DBRootPassword string
-	DBUser         string
-	DBPassword     string
-	DBIP           string
-	DBPort         int64
-	DBName         string
+	Port       int64
+	DBUser     string
+	DBPassword string
+	DBIP       string
+	DBPort     int64
+	DBName     string
+	AccessKey  string
 }
 
 func EnvString(name string) string {
@@ -49,7 +50,7 @@ func EnvBool(name string) bool {
 	panic(fmt.Sprintf("invalid value of env variable '%s'", name))
 }
 
-func GetConfig() *Config {
+func GetConfig(l *logrus.Logger) *Config {
 	l.Infoln("loading config...")
 
 	return &Config{
@@ -59,5 +60,6 @@ func GetConfig() *Config {
 		DBIP:       EnvString("DB_IP"),
 		DBPort:     EnvInt("DB_PORT"),
 		DBName:     EnvString("DB_NAME"),
+		AccessKey:  EnvString("ACCESS_KEY"),
 	}
 }

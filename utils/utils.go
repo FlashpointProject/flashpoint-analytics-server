@@ -1,4 +1,4 @@
-package main
+package utils
 
 import (
 	"errors"
@@ -14,11 +14,11 @@ import (
 	"gopkg.in/natefinch/lumberjack.v2"
 )
 
-func initLogger() *logrus.Logger {
+func InitLogger() *logrus.Logger {
 	mw := io.MultiWriter(os.Stdout, &lumberjack.Logger{
 		Filename:   "log.log",
-		MaxSize:    100000, // megabytes
-		MaxAge:     0,      //days
+		MaxSize:    500, // megabytes
+		MaxAge:     0,   //days
 		MaxBackups: 0,
 		Compress:   true,
 	})
@@ -65,7 +65,7 @@ type HTTPReqInfo struct {
 }
 
 // LogRequestHandler is logging handler
-func LogRequestHandler(h http.Handler) http.Handler {
+func LogRequestHandler(l *logrus.Entry, h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ri := &HTTPReqInfo{
 			method:    r.Method,
