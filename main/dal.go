@@ -90,7 +90,7 @@ func (db *DAL) GetSessionCached(ctx context.Context, sessionUUID string) (*Sessi
 }
 
 // CreateSession returns a session UUID and a token, also creates the user if needed.
-func (db *DAL) CreateSession(ctx context.Context, userUUID string) (*string, *string, error) {
+func (db *DAL) CreateSession(ctx context.Context, userUUID string, countryISO string) (*string, *string, error) {
 	// INSERT INTO "user" ("uuid", "created_at") VALUES('68f96ad4-2690-479b-bb06-09e897d90e79', NOW()) ON CONFLICT DO NOTHING
 	conn, err := db.pool.Acquire(ctx)
 	if err != nil {
@@ -120,7 +120,7 @@ func (db *DAL) CreateSession(ctx context.Context, userUUID string) (*string, *st
 	sessionUUID := uuid.New().String()
 	sessionToken := utils.RandomString(32)
 	var sessionID int64
-	err = conn.QueryRow(ctx, `INSERT INTO "session"("uuid", "access_token", "fk_user_id", "country_geoname_id", "created_at") VALUES ($1, $2, $3, $4, NOW()) RETURNING id`, sessionUUID, sessionToken, userID, 42).Scan(&sessionID)
+	err = conn.QueryRow(ctx, `INSERT INTO "session"("uuid", "access_token", "fk_user_id", "country_iso_code", "created_at") VALUES ($1, $2, $3, $4, NOW()) RETURNING id`, sessionUUID, sessionToken, userID, countryISO).Scan(&sessionID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -174,7 +174,7 @@ func (db *DAL) InsertFooData(ctx context.Context) error {
 	}
 	defer conn.Release()
 
-	for i := 0; i < 10000; i++ {
+	for i := 0; i < 1000; i++ {
 
 		tx, err := conn.Begin(ctx)
 		if err != nil {
@@ -189,7 +189,7 @@ func (db *DAL) InsertFooData(ctx context.Context) error {
 		}
 
 		sessionID := 0
-		err = conn.QueryRow(ctx, `INSERT INTO "session"("uuid", "fk_user_id", "country_geoname_id", "created_at") VALUES ($1, $2, $3, NOW()) RETURNING id`, uuid.New().String(), userID, 42).Scan(&sessionID)
+		err = conn.QueryRow(ctx, `INSERT INTO "session"("uuid", "access_token", "fk_user_id", "country_iso_code", "created_at") VALUES ($1, $2, $3, $4, NOW()) RETURNING id`, uuid.New().String(), utils.RandomString(32), userID, "test").Scan(&sessionID)
 		if err != nil {
 			return err
 		}
@@ -221,8 +221,8 @@ func (db *DAL) InsertFooData(ctx context.Context) error {
 }
 
 func randate() time.Time {
-	min := time.Date(2020, 1, 0, 0, 0, 0, 0, time.UTC).Unix()
-	max := time.Date(2021, 1, 0, 0, 0, 0, 0, time.UTC).Unix()
+	min := time.Date(2022, 1, 0, 0, 0, 0, 0, time.UTC).Unix()
+	max := time.Now().Unix()
 	delta := max - min
 
 	sec := rand.Int63n(delta) + min

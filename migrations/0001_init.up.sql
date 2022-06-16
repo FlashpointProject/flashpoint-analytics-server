@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS "session" (
   "uuid" CHAR(36) NOT NULL UNIQUE,
   "access_token" CHAR(32) NOT NULL,
   "fk_user_id" BIGINT NOT NULL,
-  "country_geoname_id" INT, -- extracted from IP address
+  "country_iso_code" VARCHAR(32), -- extracted from IP address
   "created_at" TIMESTAMPTZ NOT NULL,
 
   PRIMARY KEY("id"),

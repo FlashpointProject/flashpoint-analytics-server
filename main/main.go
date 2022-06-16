@@ -12,7 +12,9 @@ import (
 
 	"github.com/Dri0m/flashpoint-analytics-server/utils"
 	"github.com/gorilla/mux"
+	"github.com/gorilla/schema"
 	"github.com/joho/godotenv"
+	"github.com/oschwald/geoip2-golang"
 	"github.com/sirupsen/logrus"
 )
 
@@ -27,6 +29,8 @@ type App struct {
 	l                    *logrus.Entry
 	collectQueue         chan *Entry
 	collectQueueNotEmpty chan bool
+	decoder              *schema.Decoder
+	mmdb                 *geoip2.Reader
 }
 
 func main() {
@@ -44,6 +48,10 @@ func main() {
 	db := OpenDatabase(l, conf)
 	defer db.Close()
 
+	decoder := schema.NewDecoder()
+	decoder.ZeroEmpty(false)
+	decoder.IgnoreUnknownKeys(true)
+
 	app := App{
 		DAL: &DAL{
 			pool:         db,
@@ -52,11 +60,23 @@ func main() {
 		l:                    l,
 		collectQueue:         make(chan *Entry, 10000),
 		collectQueueNotEmpty: make(chan bool),
+		decoder:              decoder,
 	}
 
+	mmdb, err := geoip2.Open("GeoLite2-Country.mmdb")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer mmdb.Close()
+	app.mmdb = mmdb
+
 	r := mux.NewRouter()
+
 	r.HandleFunc("/user/{uuid}/session", app.UserAuth(conf.AccessKey, app.InitSessionHandler)).Methods("GET")
 	r.HandleFunc("/session/{uuid}/entry", app.SessionAuth(app.CollectHandler)).Methods("POST")
+
+	r.HandleFunc("/data/sessions", app.GetSessionDataHandler).Methods("GET")
+
 	r.HandleFunc("/fill-fake-data", app.FillFakeDataHandler).Methods("GET")
 	http.Handle("/", r)
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -100,7 +101,16 @@ func (a *App) InitSessionHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	userUUID := vars["uuid"]
 
-	sessionUUID, sessionToken, err := a.DAL.CreateSession(ctx, userUUID)
+	// If you are using strings that may be invalid, check that ip is not nil
+	ip := net.ParseIP(utils.RequestGetRemoteAddress(r))
+	record, err := a.mmdb.City(ip)
+	if err != nil {
+		a.l.Error(err)
+		http.Error(w, err.Error(), 500)
+		return
+	}
+
+	sessionUUID, sessionToken, err := a.DAL.CreateSession(ctx, userUUID, record.Country.IsoCode)
 	if err != nil {
 		a.l.Error(err)
 		http.Error(w, err.Error(), 500)
@@ -177,4 +187,19 @@ func (a *App) CollectHandler(w http.ResponseWriter, r *http.Request) {
 	a.collectQueue <- entry
 	a.announceCollectQueue()
 	w.WriteHeader(http.StatusNoContent)
+}
+
+type SessionDataRequest struct {
+}
+
+func (a *App) GetSessionDataHandler(w http.ResponseWriter, r *http.Request) {
+	//	ctx := r.Context()
+
+	filter := &SessionDataRequest{}
+
+	if err := a.decoder.Decode(filter, r.URL.Query()); err != nil {
+		a.l.Error(err)
+		http.Error(w, err.Error(), 500)
+		return
+	}
 }
