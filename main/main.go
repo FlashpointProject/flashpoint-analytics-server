@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -22,8 +23,10 @@ func panicErr(l *logrus.Entry, err error) {
 }
 
 type App struct {
-	DAL *DAL
-	l   *logrus.Entry
+	DAL                  *DAL
+	l                    *logrus.Entry
+	collectQueue         chan *Entry
+	collectQueueNotEmpty chan bool
 }
 
 func main() {
@@ -42,14 +45,31 @@ func main() {
 	defer db.Close()
 
 	app := App{
-		DAL: &DAL{pool: db},
-		l:   l,
+		DAL: &DAL{
+			pool:         db,
+			sessionCache: NewSessionCache(),
+		},
+		l:                    l,
+		collectQueue:         make(chan *Entry, 10000),
+		collectQueueNotEmpty: make(chan bool),
 	}
 
 	r := mux.NewRouter()
-	r.HandleFunc("/collect", CollectAuth(conf.AccessKey, app.CollectHandler)).Methods("POST")
+	r.HandleFunc("/user/{uuid}/session", app.UserAuth(conf.AccessKey, app.InitSessionHandler)).Methods("GET")
+	r.HandleFunc("/session/{uuid}/entry", app.SessionAuth(app.CollectHandler)).Methods("POST")
 	r.HandleFunc("/fill-fake-data", app.FillFakeDataHandler).Methods("GET")
 	http.Handle("/", r)
+
+	ctx, cancelFunc := context.WithCancel(context.Background())
+
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+
+	l.Infoln("starting the colletor consumer...")
+
+	go func() {
+		app.RunCollectorConsumer(l, ctx, wg)
+	}()
 
 	srv := &http.Server{
 		Handler: utils.LogRequestHandler(l, r),
@@ -67,11 +87,16 @@ func main() {
 	term := make(chan os.Signal, 1)
 	signal.Notify(term, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
 	<-term
+	l.Infoln("signal received")
 
 	l.Infoln("shutting down the server...")
 	if err := srv.Shutdown(context.Background()); err != nil {
 		l.WithError(err).Errorln("server shutdown failed")
 	}
+
+	l.Infoln("waiting for all goroutines to finish...")
+	cancelFunc()
+	wg.Wait()
 
 	l.Infoln("closing all db connections...")
 	db.Close()

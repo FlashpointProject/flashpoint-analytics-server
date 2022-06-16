@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS "session" (
   "id" BIGINT GENERATED ALWAYS AS IDENTITY,
 
   "uuid" CHAR(36) NOT NULL UNIQUE,
+  "access_token" CHAR(32) NOT NULL,
   "fk_user_id" BIGINT NOT NULL,
   "country_geoname_id" INT, -- extracted from IP address
   "created_at" TIMESTAMPTZ NOT NULL,
