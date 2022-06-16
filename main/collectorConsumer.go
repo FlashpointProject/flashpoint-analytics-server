@@ -14,7 +14,7 @@ func (a *App) RunCollectorConsumer(logger *logrus.Entry, ctx context.Context, wg
 	l := logger.WithField("serviceName", "collectorConsumer")
 	defer l.Info("consumer stopped")
 
-	bucket, ticker := utils.NewBucketLimiter(100*time.Millisecond, 1)
+	bucket, ticker := utils.NewBucketLimiter(50*time.Millisecond, 1)
 	defer ticker.Stop()
 
 	a.announceCollectQueue()
