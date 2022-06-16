@@ -13,7 +13,7 @@ import (
 	"github.com/gorilla/mux"
 )
 
-func (a *App) UserAuth(key string, next func(http.ResponseWriter, *http.Request)) func(http.ResponseWriter, *http.Request) {
+func (a *App) KeyAuth(key string, next func(http.ResponseWriter, *http.Request)) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		reqKey := r.Header.Get("Authorization")
 		splitToken := strings.Split(reqKey, "Bearer ")
@@ -189,17 +189,45 @@ func (a *App) CollectHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-type SessionDataRequest struct {
+type CurrentlyOnlineRequest struct {
+	From     uint64 `schema:"from"`
+	To       uint64 `schema:"to"`
+	Interval uint64 `schema:"interval"`
 }
 
-func (a *App) GetSessionDataHandler(w http.ResponseWriter, r *http.Request) {
-	//	ctx := r.Context()
+type CurrentlyOnlineResponse struct {
+	Result []CurrentlyOnline `json:"result"`
+}
 
-	filter := &SessionDataRequest{}
+func (a *App) GetCurrentlyOnlineHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	filter := &CurrentlyOnlineRequest{}
 
 	if err := a.decoder.Decode(filter, r.URL.Query()); err != nil {
 		a.l.Error(err)
 		http.Error(w, err.Error(), 500)
 		return
 	}
+
+	if filter.Interval == 0 {
+		filter.Interval = 999999999
+	}
+
+	a.l.Debug(filter)
+
+	result, err := a.DAL.GetCurrentlyOnline(ctx, filter)
+
+	if err != nil {
+		a.l.Error(err)
+		http.Error(w, err.Error(), 500)
+		return
+	}
+
+	response := CurrentlyOnlineResponse{
+		Result: result,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
 }

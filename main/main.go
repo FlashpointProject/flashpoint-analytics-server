@@ -49,8 +49,6 @@ func main() {
 	defer db.Close()
 
 	decoder := schema.NewDecoder()
-	decoder.ZeroEmpty(false)
-	decoder.IgnoreUnknownKeys(true)
 
 	app := App{
 		DAL: &DAL{
@@ -72,10 +70,10 @@ func main() {
 
 	r := mux.NewRouter()
 
-	r.HandleFunc("/user/{uuid}/session", app.UserAuth(conf.AccessKey, app.InitSessionHandler)).Methods("GET")
+	r.HandleFunc("/user/{uuid}/session", app.KeyAuth(conf.AccessKey, app.InitSessionHandler)).Methods("GET")
 	r.HandleFunc("/session/{uuid}/entry", app.SessionAuth(app.CollectHandler)).Methods("POST")
 
-	r.HandleFunc("/data/sessions", app.GetSessionDataHandler).Methods("GET")
+	r.HandleFunc("/data/online", app.KeyAuth(conf.ReadKey, app.GetCurrentlyOnlineHandler)).Methods("GET")
 
 	r.HandleFunc("/fill-fake-data", app.FillFakeDataHandler).Methods("GET")
 	http.Handle("/", r)

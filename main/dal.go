@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -163,6 +165,78 @@ func (db *DAL) InsertEntryBatch(ctx context.Context, rows [][]interface{}) error
 	}
 
 	return nil
+}
+
+type CurrentlyOnline struct {
+	Time       *time.Time       `json:"time"`
+	Count      *int64           `json:"online_count"`
+	PerCountry map[string]int64 `json:"per_country"`
+}
+
+// GetCurrentlyOnline returns sessions that produced events in a given timeframe
+func (db *DAL) GetCurrentlyOnline(ctx context.Context, filter *CurrentlyOnlineRequest) ([]CurrentlyOnline, error) {
+	conn, err := db.pool.Acquire(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Release()
+
+	rows, err := conn.Query(ctx, `
+	SELECT "time",
+	"online_count",
+	count_elements((SELECT array_agg("session"."country_iso_code") FROM "session" WHERE "session"."id" = ANY("session_ids"))) as "per_country"
+	FROM
+	(SELECT 
+	time_bucket_gapfill($1, "entry"."created_at") AS "time", 
+		count(DISTINCT "fk_session_id") AS "online_count",
+		array_agg(DISTINCT "entry"."fk_session_id") AS "session_ids"
+	FROM "entry" 
+	JOIN "session" ON "session"."id"="entry"."fk_session_id"
+	WHERE 
+		"entry"."created_at" < to_timestamp($2) AND
+		"entry"."created_at" > to_timestamp($3)
+	GROUP BY "time"
+	ORDER BY "time") AS t1
+	`, fmt.Sprintf("%d", filter.Interval), filter.To, filter.From)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]CurrentlyOnline, 0)
+
+	for rows.Next() {
+		co := CurrentlyOnline{}
+		co.PerCountry = make(map[string]int64)
+		var rawPerCountry *string
+		err := rows.Scan(&co.Time, &co.Count, &rawPerCountry)
+		if err != nil {
+			return nil, err
+		}
+
+		if rawPerCountry != nil {
+			splitPerCountry := strings.Split(*rawPerCountry, ",")
+			for _, tuple := range splitPerCountry {
+				splitTuple := strings.Split(tuple, ":")
+				if len(splitTuple) != 2 {
+					return nil, fmt.Errorf("invalid data received from database")
+				}
+
+				countryISO := splitTuple[0]
+				countryCount, err := strconv.ParseInt(splitTuple[1], 10, 64)
+				if err != nil {
+					return nil, fmt.Errorf("invalid data received from database")
+				}
+				co.PerCountry[countryISO] = countryCount
+			}
+		}
+
+		result = append(result, co)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return result, nil
 }
 
 // test stuff

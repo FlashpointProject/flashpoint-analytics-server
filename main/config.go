@@ -16,6 +16,7 @@ type Config struct {
 	DBPort     int64
 	DBName     string
 	AccessKey  string
+	ReadKey    string
 }
 
 func EnvString(name string) string {
@@ -61,5 +62,6 @@ func GetConfig(l *logrus.Logger) *Config {
 		DBPort:     EnvInt("DB_PORT"),
 		DBName:     EnvString("DB_NAME"),
 		AccessKey:  EnvString("ACCESS_KEY"),
+		ReadKey:    EnvString("READ_KEY"),
 	}
 }
