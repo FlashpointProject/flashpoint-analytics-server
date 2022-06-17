@@ -27,7 +27,7 @@ func panicErr(l *logrus.Entry, err error) {
 type App struct {
 	DAL                  *DAL
 	l                    *logrus.Entry
-	collectQueue         chan *Entry
+	collectQueue         chan *Event
 	collectQueueNotEmpty chan bool
 	decoder              *schema.Decoder
 	mmdb                 *geoip2.Reader
@@ -56,7 +56,7 @@ func main() {
 			sessionCache: NewSessionCache(),
 		},
 		l:                    l,
-		collectQueue:         make(chan *Entry, 10000),
+		collectQueue:         make(chan *Event, 10000),
 		collectQueueNotEmpty: make(chan bool),
 		decoder:              decoder,
 	}
@@ -71,7 +71,7 @@ func main() {
 	r := mux.NewRouter()
 
 	r.HandleFunc("/user/{uuid}/session", app.KeyAuth(conf.AccessKey, app.InitSessionHandler)).Methods("GET")
-	r.HandleFunc("/session/{uuid}/entry", app.SessionAuth(app.CollectHandler)).Methods("POST")
+	r.HandleFunc("/session/{uuid}/event", app.SessionAuth(app.CollectHandler)).Methods("POST")
 
 	r.HandleFunc("/data/online", app.KeyAuth(conf.ReadKey, app.GetCurrentlyOnlineHandler)).Methods("GET")
 

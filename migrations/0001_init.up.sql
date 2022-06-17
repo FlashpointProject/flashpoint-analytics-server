@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS "session" (
   CONSTRAINT "c_fk_user_id" FOREIGN KEY("fk_user_id") REFERENCES "user"("id")
 );
 
-CREATE TABLE IF NOT EXISTS "entry" (
+CREATE TABLE IF NOT EXISTS "event" (
   "fk_session_id" BIGINT NOT NULL,
   "category" VARCHAR(126) NOT NULL,
   "key" VARCHAR(126) NOT NULL,
@@ -32,4 +32,4 @@ CREATE TABLE IF NOT EXISTS "entry" (
   CONSTRAINT "c_fk_session_id" FOREIGN KEY("fk_session_id") REFERENCES "session"("id")
 );
 
-SELECT create_hypertable('entry', 'created_at');
+SELECT create_hypertable('event', 'created_at');

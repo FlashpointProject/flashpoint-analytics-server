@@ -53,16 +53,16 @@ func (a *App) IngestCollectQueueBatch(logger *logrus.Entry, ctx context.Context)
 		readUpTo = qlen
 	}
 	for i := 0; i < readUpTo; i++ {
-		entry, ok := <-a.collectQueue
+		event, ok := <-a.collectQueue
 		if !ok {
 			break
 		}
-		rows = append(rows, []interface{}{entry.SessionID, entry.Category, entry.Key, entry.Value, entry.CreatedAt})
+		rows = append(rows, []interface{}{event.SessionID, event.Category, event.Key, event.Value, event.CreatedAt})
 	}
 
-	logger.Debugf("inserting a batch of %d entries", readUpTo)
+	logger.Debugf("inserting a batch of %d events", readUpTo)
 
-	a.DAL.InsertEntryBatch(ctx, rows)
+	a.DAL.InsertEventBatch(ctx, rows)
 }
 
 func (a *App) announceCollectQueue() {

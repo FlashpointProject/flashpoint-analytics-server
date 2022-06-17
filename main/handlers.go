@@ -142,7 +142,7 @@ func (c *CollectRequest) Validate() (err error) {
 	return nil
 }
 
-type Entry struct {
+type Event struct {
 	SessionID int64
 	Category  string
 	Key       string
@@ -176,7 +176,7 @@ func (a *App) CollectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	entry := &Entry{
+	event := &Event{
 		SessionID: SessionID,
 		Category:  c.Category,
 		Key:       c.Key,
@@ -184,7 +184,7 @@ func (a *App) CollectHandler(w http.ResponseWriter, r *http.Request) {
 		CreatedAt: time.Now(),
 	}
 
-	a.collectQueue <- entry
+	a.collectQueue <- event
 	a.announceCollectQueue()
 	w.WriteHeader(http.StatusNoContent)
 }
