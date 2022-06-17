@@ -193,11 +193,11 @@ func (db *DAL) GetCurrentlyOnline(ctx context.Context, filter *CurrentlyOnlineRe
 	FROM event 
 	JOIN "session" ON "session"."id"=event."fk_session_id"
 	WHERE 
-		event."created_at" < to_timestamp($2) AND
-		event."created_at" > to_timestamp($3)
+		event."created_at" <= to_timestamp($2) AND
+		event."created_at" >= to_timestamp($3)
 	GROUP BY "time"
 	ORDER BY "time") AS t1
-	`, fmt.Sprintf("%d", filter.Interval), filter.To, filter.From)
+	`, fmt.Sprintf("%d", *filter.Interval), filter.To, filter.From)
 	if err != nil {
 		return nil, err
 	}
@@ -239,64 +239,172 @@ func (db *DAL) GetCurrentlyOnline(ctx context.Context, filter *CurrentlyOnlineRe
 	return result, nil
 }
 
+type RawEvent struct {
+	SessionUUID       string    `json:"session_uuid"`
+	SessionCountryISO string    `json:"session_country_iso"`
+	SessionCreatedAt  time.Time `json:"session_created_at"`
+	EventCategory     string    `json:"event_category"`
+	EventKey          string    `json:"event_key"`
+	EventValue        string    `json:"event_value"`
+	EventCreatedAt    time.Time `json:"event_created_at"`
+}
+
 // GetRawEvents returns a list of filtered events
-func (db *DAL) GetRawEvents(ctx context.Context, filter *CurrentlyOnlineRequest) ([]CurrentlyOnline, error) {
+func (db *DAL) GetRawEvents(ctx context.Context, filter *RawEventsRequest) ([]RawEvent, error) {
 	conn, err := db.pool.Acquire(ctx)
 	if err != nil {
 		return nil, err
 	}
 	defer conn.Release()
 
+	optionalFilterString := ""
+	filterValues := make([]interface{}, 0)
+	optionalFilterCounter := 3
+
+	filterValues = append(filterValues, filter.To)
+	filterValues = append(filterValues, filter.From)
+
+	if filter.SessionFrom != nil {
+		optionalFilterString += fmt.Sprintf(` AND "session"."created_at" >= to_timestamp($%d)`, optionalFilterCounter)
+		filterValues = append(filterValues, *filter.SessionFrom)
+		optionalFilterCounter++
+	}
+	if filter.SessionTo != nil {
+		optionalFilterString += fmt.Sprintf(` AND "session"."created_at" <= to_timestamp(%d)`, optionalFilterCounter)
+		filterValues = append(filterValues, *filter.SessionTo)
+		optionalFilterCounter++
+	}
+	if filter.SessionCountryISO != nil {
+		optionalFilterString += fmt.Sprintf(` AND "session"."country_iso_code" = $%d`, optionalFilterCounter)
+		filterValues = append(filterValues, *filter.SessionCountryISO)
+		optionalFilterCounter++
+	}
+	if filter.SessionUUID != nil {
+		optionalFilterString += fmt.Sprintf(` AND "session"."uuid" = $%d`, optionalFilterCounter)
+		filterValues = append(filterValues, *filter.SessionUUID)
+		optionalFilterCounter++
+	}
+	if filter.EventCategory != nil {
+		optionalFilterString += fmt.Sprintf(` AND "event"."category" = $%d`, optionalFilterCounter)
+		filterValues = append(filterValues, *filter.EventCategory)
+		optionalFilterCounter++
+	}
+	if filter.EventKey != nil {
+		optionalFilterString += fmt.Sprintf(` AND "event"."key" = $%d`, optionalFilterCounter)
+		filterValues = append(filterValues, *filter.EventKey)
+		optionalFilterCounter++
+	}
+	if filter.EventValue != nil {
+		optionalFilterString += fmt.Sprintf(` AND "event"."value" = $%d`, optionalFilterCounter)
+		filterValues = append(filterValues, *filter.EventValue)
+		optionalFilterCounter++
+	}
+
 	rows, err := conn.Query(ctx, `
-	SELECT "time",
-	"online_count",
-	count_elements((SELECT array_agg("session"."country_iso_code") FROM "session" WHERE "session"."id" = ANY("session_ids"))) as "per_country"
-	FROM
-	(SELECT 
-	time_bucket_gapfill($1, event."created_at") AS "time", 
-		count(DISTINCT "fk_session_id") AS "online_count",
-		array_agg(DISTINCT event."fk_session_id") AS "session_ids"
-	FROM event 
-	JOIN "session" ON "session"."id"=event."fk_session_id"
+	SELECT 
+    "session"."uuid" as "session_uuid",
+    "session"."country_iso_code" as "session_country_iso_code",
+    "session"."created_at" as "session_created_at",
+    "event"."category" as "event_category",
+    "event"."key" as "event_key",
+    "event"."value" as "event_value",
+    "event"."created_at" as "event_created_at"
+	FROM "event" 
+	JOIN "session" ON "session"."id"="event"."fk_session_id"
 	WHERE 
-		event."created_at" < to_timestamp($2) AND
-		event."created_at" > to_timestamp($3)
-	GROUP BY "time"
-	ORDER BY "time") AS t1
-	`, fmt.Sprintf("%d", filter.Interval), filter.To, filter.From)
+		"event"."created_at" <= to_timestamp($1) AND
+		"event"."created_at" >= to_timestamp($2)
+		`+optionalFilterString+`
+	ORDER BY "event"."created_at"
+	`, filterValues...)
 	if err != nil {
 		return nil, err
 	}
 
-	result := make([]CurrentlyOnline, 0)
+	result := make([]RawEvent, 0)
 
 	for rows.Next() {
-		co := CurrentlyOnline{}
-		co.PerCountry = make(map[string]int64)
-		var rawPerCountry *string
-		err := rows.Scan(&co.Time, &co.Count, &rawPerCountry)
+		re := RawEvent{}
+		err := rows.Scan(&re.SessionUUID, &re.SessionCountryISO, &re.SessionCreatedAt, &re.EventCategory, &re.EventKey, &re.EventValue, &re.EventCreatedAt)
 		if err != nil {
 			return nil, err
 		}
 
-		if rawPerCountry != nil {
-			splitPerCountry := strings.Split(*rawPerCountry, ",")
-			for _, tuple := range splitPerCountry {
-				splitTuple := strings.Split(tuple, ":")
-				if len(splitTuple) != 2 {
-					return nil, fmt.Errorf("invalid data received from database")
-				}
+		result = append(result, re)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 
-				countryISO := splitTuple[0]
-				countryCount, err := strconv.ParseInt(splitTuple[1], 10, 64)
-				if err != nil {
-					return nil, fmt.Errorf("invalid data received from database")
-				}
-				co.PerCountry[countryISO] = countryCount
-			}
+	return result, nil
+}
+
+type EventCount struct {
+	EventCategory string `json:"event_category"`
+	EventKey      string `json:"event_key"`
+	EventValue    string `json:"event_value"`
+	EventCount    uint64 `json:"event_count"`
+}
+
+// GetEventCount returns a list of filtered events, grouping by value
+func (db *DAL) GetEventCount(ctx context.Context, filter *EventCountRequest) ([]EventCount, error) {
+	conn, err := db.pool.Acquire(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Release()
+
+	optionalFilterString := ""
+	filterValues := make([]interface{}, 0)
+	optionalFilterCounter := 3
+
+	filterValues = append(filterValues, filter.To)
+	filterValues = append(filterValues, filter.From)
+
+	if filter.EventCategory != nil {
+		optionalFilterString += fmt.Sprintf(` AND "event"."category" = $%d`, optionalFilterCounter)
+		filterValues = append(filterValues, *filter.EventCategory)
+		optionalFilterCounter++
+	}
+	if filter.EventKey != nil {
+		optionalFilterString += fmt.Sprintf(` AND "event"."key" = $%d`, optionalFilterCounter)
+		filterValues = append(filterValues, *filter.EventKey)
+		optionalFilterCounter++
+	}
+	if filter.EventValue != nil {
+		optionalFilterString += fmt.Sprintf(` AND "event"."value" = $%d`, optionalFilterCounter)
+		filterValues = append(filterValues, *filter.EventValue)
+		optionalFilterCounter++
+	}
+
+	rows, err := conn.Query(ctx, `
+	SELECT 
+    "event"."category" as "event_category",
+    "event"."key" as "event_key",
+    "event"."value" as "event_value",
+    COUNT("event"."value") as "event_value_count"
+	FROM "event" 
+	WHERE 
+		"event"."created_at" <= to_timestamp($1) AND
+		"event"."created_at" >= to_timestamp($2)
+		`+optionalFilterString+`
+	GROUP BY "event"."category", "event"."key", "event"."value"
+	ORDER BY "event_value_count" DESC
+	`, filterValues...)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]EventCount, 0)
+
+	for rows.Next() {
+		ec := EventCount{}
+		err := rows.Scan(&ec.EventCategory, &ec.EventKey, &ec.EventValue, &ec.EventCount)
+		if err != nil {
+			return nil, err
 		}
 
-		result = append(result, co)
+		result = append(result, ec)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -314,7 +422,7 @@ func (db *DAL) InsertFooData(ctx context.Context) error {
 	}
 	defer conn.Release()
 
-	for i := 0; i < 1000; i++ {
+	for i := 0; i < 10000; i++ {
 
 		tx, err := conn.Begin(ctx)
 		if err != nil {
@@ -329,7 +437,7 @@ func (db *DAL) InsertFooData(ctx context.Context) error {
 		}
 
 		sessionID := 0
-		err = conn.QueryRow(ctx, `INSERT INTO "session"("uuid", "access_token", "fk_user_id", "country_iso_code", "created_at") VALUES ($1, $2, $3, $4, NOW()) RETURNING id`, uuid.New().String(), utils.RandomString(32), userID, "test").Scan(&sessionID)
+		err = conn.QueryRow(ctx, `INSERT INTO "session"("uuid", "access_token", "fk_user_id", "country_iso_code", "created_at") VALUES ($1, $2, $3, $4, NOW()) RETURNING id`, uuid.New().String(), utils.RandomString(32), userID, utils.RandomString(1)).Scan(&sessionID)
 		if err != nil {
 			return err
 		}
@@ -337,7 +445,7 @@ func (db *DAL) InsertFooData(ctx context.Context) error {
 		rows := [][]interface{}{}
 
 		for i := 0; i < 1000; i++ {
-			rows = append(rows, []interface{}{sessionID, "fake", "fake", "fake", randate()})
+			rows = append(rows, []interface{}{sessionID, utils.RandomString(1), utils.RandomString(1), utils.RandomString(1), randate()})
 		}
 
 		_, err = conn.CopyFrom(

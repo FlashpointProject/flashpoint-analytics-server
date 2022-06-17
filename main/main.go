@@ -73,7 +73,9 @@ func main() {
 	r.HandleFunc("/user/{uuid}/session", app.KeyAuth(conf.AccessKey, app.InitSessionHandler)).Methods("GET")
 	r.HandleFunc("/session/{uuid}/event", app.SessionAuth(app.CollectHandler)).Methods("POST")
 
-	r.HandleFunc("/data/online", app.KeyAuth(conf.ReadKey, app.GetCurrentlyOnlineHandler)).Methods("GET")
+	r.HandleFunc("/data/online", app.KeyAuth(conf.ReadKey, app.GetCurrentlyOnlineHandler)).Methods("POST")
+	r.HandleFunc("/data/events-raw", app.KeyAuth(conf.ReadKey, app.GetRawEventsHandler)).Methods("POST")
+	r.HandleFunc("/data/events-count", app.KeyAuth(conf.ReadKey, app.GetEventCountHandler)).Methods("POST")
 
 	r.HandleFunc("/fill-fake-data", app.FillFakeDataHandler).Methods("GET")
 	http.Handle("/", r)

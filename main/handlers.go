@@ -190,9 +190,9 @@ func (a *App) CollectHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 type CurrentlyOnlineRequest struct {
-	From     uint64 `schema:"from"`
-	To       uint64 `schema:"to"`
-	Interval uint64 `schema:"interval"`
+	From     uint64  `json:"from"`
+	To       uint64  `json:"to"`
+	Interval *uint64 `json:"interval"`
 }
 
 type CurrentlyOnlineResponse struct {
@@ -203,18 +203,17 @@ func (a *App) GetCurrentlyOnlineHandler(w http.ResponseWriter, r *http.Request) 
 	ctx := r.Context()
 
 	filter := &CurrentlyOnlineRequest{}
-
-	if err := a.decoder.Decode(filter, r.URL.Query()); err != nil {
+	err := utils.DecodeJSONBody(w, r, filter)
+	if err != nil {
 		a.l.Error(err)
 		http.Error(w, err.Error(), 500)
 		return
 	}
 
-	if filter.Interval == 0 {
-		filter.Interval = 999999999
+	if filter.Interval == nil || *filter.Interval == 0 {
+		var value uint64 = 999999999
+		filter.Interval = &value
 	}
-
-	a.l.Debug(filter)
 
 	result, err := a.DAL.GetCurrentlyOnline(ctx, filter)
 
@@ -225,6 +224,88 @@ func (a *App) GetCurrentlyOnlineHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	response := CurrentlyOnlineResponse{
+		Result: result,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+type RawEventsRequest struct {
+	From              uint64  `json:"from"`
+	To                uint64  `json:"to"`
+	SessionFrom       *uint64 `json:"session_from"`
+	SessionTo         *uint64 `json:"session_to"`
+	SessionCountryISO *string `json:"session_country_iso"`
+	SessionUUID       *string `json:"session_uuid"`
+	EventCategory     *string `json:"event_category"`
+	EventKey          *string `json:"event_key"`
+	EventValue        *string `json:"event_value"`
+}
+
+type RawEventsResponse struct {
+	Result []RawEvent `json:"result"`
+}
+
+func (a *App) GetRawEventsHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	filter := &RawEventsRequest{}
+	err := utils.DecodeJSONBody(w, r, filter)
+	if err != nil {
+		a.l.Error(err)
+		http.Error(w, err.Error(), 500)
+		return
+	}
+
+	result, err := a.DAL.GetRawEvents(ctx, filter)
+
+	if err != nil {
+		a.l.Error(err)
+		http.Error(w, err.Error(), 500)
+		return
+	}
+
+	response := RawEventsResponse{
+		Result: result,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+type EventCountRequest struct {
+	From          uint64  `json:"from"`
+	To            uint64  `json:"to"`
+	EventCategory *string `json:"event_category"`
+	EventKey      *string `json:"event_key"`
+	EventValue    *string `json:"event_value"`
+}
+
+type EventCountResponse struct {
+	Result []EventCount `json:"result"`
+}
+
+func (a *App) GetEventCountHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	filter := &EventCountRequest{}
+	err := utils.DecodeJSONBody(w, r, filter)
+	if err != nil {
+		a.l.Error(err)
+		http.Error(w, err.Error(), 500)
+		return
+	}
+
+	result, err := a.DAL.GetEventCount(ctx, filter)
+
+	if err != nil {
+		a.l.Error(err)
+		http.Error(w, err.Error(), 500)
+		return
+	}
+
+	response := EventCountResponse{
 		Result: result,
 	}
 
