@@ -422,7 +422,7 @@ func (db *DAL) InsertFooData(ctx context.Context) error {
 	}
 	defer conn.Release()
 
-	for i := 0; i < 1000; i++ {
+	for i := 0; i < 10000; i++ {
 
 		tx, err := conn.Begin(ctx)
 		if err != nil {
