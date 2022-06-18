@@ -422,7 +422,7 @@ func (db *DAL) InsertFooData(ctx context.Context) error {
 	}
 	defer conn.Release()
 
-	for i := 0; i < 10000; i++ {
+	for i := 0; i < 1000; i++ {
 
 		tx, err := conn.Begin(ctx)
 		if err != nil {
@@ -437,7 +437,7 @@ func (db *DAL) InsertFooData(ctx context.Context) error {
 		}
 
 		sessionID := 0
-		err = conn.QueryRow(ctx, `INSERT INTO "session"("uuid", "access_token", "fk_user_id", "country_iso_code", "created_at") VALUES ($1, $2, $3, $4, NOW()) RETURNING id`, uuid.New().String(), utils.RandomString(32), userID, utils.RandomString(1)).Scan(&sessionID)
+		err = conn.QueryRow(ctx, `INSERT INTO "session"("uuid", "access_token", "fk_user_id", "country_iso_code", "created_at") VALUES ($1, $2, $3, $4, NOW()) RETURNING id`, uuid.New().String(), utils.RandomString(32), userID, utils.RandomCountryISO()).Scan(&sessionID)
 		if err != nil {
 			return err
 		}
