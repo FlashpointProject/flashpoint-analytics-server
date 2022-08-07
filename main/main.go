@@ -25,12 +25,11 @@ func panicErr(l *logrus.Entry, err error) {
 }
 
 type App struct {
-	DAL                  *DAL
-	l                    *logrus.Entry
-	collectQueue         chan *Event
-	collectQueueNotEmpty chan bool
-	decoder              *schema.Decoder
-	mmdb                 *geoip2.Reader
+	DAL          *DAL
+	l            *logrus.Entry
+	collectQueue chan *Event
+	decoder      *schema.Decoder
+	mmdb         *geoip2.Reader
 }
 
 func main() {
@@ -55,10 +54,9 @@ func main() {
 			pool:         db,
 			sessionCache: NewSessionCache(),
 		},
-		l:                    l,
-		collectQueue:         make(chan *Event, 10000),
-		collectQueueNotEmpty: make(chan bool),
-		decoder:              decoder,
+		l:            l,
+		collectQueue: make(chan *Event, 100000),
+		decoder:      decoder,
 	}
 
 	mmdb, err := geoip2.Open("GeoLite2-Country.mmdb")
@@ -77,7 +75,8 @@ func main() {
 	r.HandleFunc("/data/events-raw", app.KeyAuth(conf.ReadKey, app.GetRawEventsHandler)).Methods("POST")
 	r.HandleFunc("/data/events-count", app.KeyAuth(conf.ReadKey, app.GetEventCountHandler)).Methods("POST")
 
-	r.HandleFunc("/fill-fake-data", app.FillFakeDataHandler).Methods("GET")
+	// r.HandleFunc("/fill-fake-data", app.FillFakeDataHandler).Methods("GET")
+	r.HandleFunc("/ingest-stuff", app.IngestStuffHandler).Methods("GET")
 	http.Handle("/", r)
 
 	ctx, cancelFunc := context.WithCancel(context.Background())
@@ -95,8 +94,8 @@ func main() {
 		Handler: utils.LogRequestHandler(l, r),
 		Addr:    fmt.Sprintf("127.0.0.1:%d", conf.Port),
 		// Good practice: enforce timeouts for servers you create!
-		WriteTimeout: 60 * time.Second,
-		ReadTimeout:  60 * time.Second,
+		WriteTimeout: 6000 * time.Second,
+		ReadTimeout:  6000 * time.Second,
 	}
 
 	l.WithField("port", conf.Port).Infoln("starting the server...")

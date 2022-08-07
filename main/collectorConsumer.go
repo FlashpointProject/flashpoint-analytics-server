@@ -17,8 +17,6 @@ func (a *App) RunCollectorConsumer(logger *logrus.Entry, ctx context.Context, wg
 	bucket, ticker := utils.NewBucketLimiter(50*time.Millisecond, 1)
 	defer ticker.Stop()
 
-	a.announceCollectQueue()
-
 	for {
 		select {
 		case <-ctx.Done():
@@ -27,15 +25,8 @@ func (a *App) RunCollectorConsumer(logger *logrus.Entry, ctx context.Context, wg
 				a.IngestCollectQueueBatch(logger, ctx)
 			}
 			return
-		case <-a.collectQueueNotEmpty:
-			select {
-			case <-ctx.Done():
-				l.Info("context cancelled, stopping collector consumer once the queue is empty")
-				for len(a.collectQueue) > 0 {
-					a.IngestCollectQueueBatch(logger, ctx)
-				}
-				return
-			case <-bucket:
+		case <-bucket:
+			if len(a.collectQueue) > 0 {
 				a.IngestCollectQueueBatch(logger, ctx)
 			}
 		}
@@ -43,7 +34,7 @@ func (a *App) RunCollectorConsumer(logger *logrus.Entry, ctx context.Context, wg
 }
 
 func (a *App) IngestCollectQueueBatch(logger *logrus.Entry, ctx context.Context) {
-	const batchSize = 250
+	const batchSize = 1000
 
 	rows := [][]interface{}{}
 
@@ -62,13 +53,8 @@ func (a *App) IngestCollectQueueBatch(logger *logrus.Entry, ctx context.Context)
 
 	logger.Debugf("inserting a batch of %d events", readUpTo)
 
-	a.DAL.InsertEventBatch(ctx, rows)
-}
-
-func (a *App) announceCollectQueue() {
-	select {
-	// non-blocking announce that something is in the queue
-	case a.collectQueueNotEmpty <- true:
-	default:
+	err := a.DAL.InsertEventBatch(ctx, rows)
+	if err != nil {
+		a.l.Error(err)
 	}
 }

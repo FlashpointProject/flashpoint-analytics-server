@@ -93,7 +93,6 @@ func (db *DAL) GetSessionCached(ctx context.Context, sessionUUID string) (*Sessi
 
 // CreateSession returns a session UUID and a token, also creates the user if needed.
 func (db *DAL) CreateSession(ctx context.Context, userUUID string, countryISO string) (*string, *string, error) {
-	// INSERT INTO "user" ("uuid", "created_at") VALUES('68f96ad4-2690-479b-bb06-09e897d90e79', NOW()) ON CONFLICT DO NOTHING
 	conn, err := db.pool.Acquire(ctx)
 	if err != nil {
 		return nil, nil, err
@@ -116,8 +115,6 @@ func (db *DAL) CreateSession(ctx context.Context, userUUID string, countryISO st
 	if err != nil {
 		return nil, nil, err
 	}
-
-	// TODO GEOIP
 
 	sessionUUID := uuid.New().String()
 	sessionToken := utils.RandomString(32)

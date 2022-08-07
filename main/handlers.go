@@ -4,8 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"math/rand"
 	"net"
 	"net/http"
+	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -185,7 +189,6 @@ func (a *App) CollectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	a.collectQueue <- event
-	a.announceCollectQueue()
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -311,4 +314,112 @@ func (a *App) GetEventCountHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
+}
+
+type IngestStuffFormat struct {
+	UnixDate int64              `json:"unixDate"`
+	Data     []IngestStuffEvent `json:"data"`
+}
+
+type IngestStuffEvent struct {
+	EventCategory string `json:"event_category"`
+	EventKey      string `json:"event_key"`
+	EventValue    string `json:"event_value"`
+	EventCount    string `json:"event_count"`
+}
+
+func (a *App) IngestStuffHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	const UUID = "00000000-0000-0000-0000-000000000000"
+	const Country = "FPU"
+
+	sessionUUID, _, err := a.DAL.CreateSession(ctx, UUID, Country)
+	if err != nil {
+		a.l.Error(err)
+		http.Error(w, err.Error(), 500)
+		return
+	}
+
+	session, err := a.DAL.GetSessionCached(ctx, *sessionUUID)
+	if err != nil {
+		a.l.Error(err)
+		http.Error(w, err.Error(), 500)
+		return
+	}
+
+	if err != nil {
+		a.l.Error(err)
+		http.Error(w, err.Error(), 500)
+		return
+	}
+
+	files, err := os.ReadDir("./ingest")
+	if err != nil {
+		a.l.Error(err)
+		http.Error(w, err.Error(), 500)
+		return
+	}
+
+	for _, f := range files {
+		if f.IsDir() {
+			continue
+		}
+		a.l.Debugf("processing file %s", f.Name())
+
+		err := func() error {
+			jsonFile, err := os.Open(fmt.Sprintf("./ingest/%s", f.Name()))
+			if err != nil {
+				a.l.Error(err)
+				return err
+			}
+			defer jsonFile.Close()
+
+			bytes, err := ioutil.ReadAll(jsonFile)
+			if err != nil {
+				a.l.Error(err)
+				return err
+			}
+
+			var data IngestStuffFormat
+
+			err = json.Unmarshal(bytes, &data)
+			if err != nil {
+				a.l.Error(err)
+				return err
+			}
+
+			for _, eventData := range data.Data {
+				eventCount, err := strconv.Atoi(eventData.EventCount)
+				if err != nil {
+					a.l.Error(err)
+					return err
+				}
+
+				// the data are clustered per day, let's explode it
+				for i := 0; i < eventCount; i++ {
+					randomSeconds := rand.Intn(86400)
+
+					event := &Event{
+						SessionID: session.ID,
+						Category:  eventData.EventCategory,
+						Key:       eventData.EventKey,
+						Value:     eventData.EventValue,
+						CreatedAt: time.Unix(data.UnixDate, 0).Add(time.Duration(randomSeconds) * time.Second),
+					}
+
+					a.collectQueue <- event
+				}
+			}
+
+			return nil
+		}()
+
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+	}
+
+	w.WriteHeader(http.StatusOK)
 }
