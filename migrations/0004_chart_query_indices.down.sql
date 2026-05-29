@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS event_category_key_created_at_session_idx;

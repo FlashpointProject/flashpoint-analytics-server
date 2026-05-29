@@ -1,18 +1,20 @@
 package utils
 
 import (
+	crand "crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"math/rand"
+	"mime"
 	"net/http"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/felixge/httpsnoop"
-	"github.com/golang/gddo/httputil/header"
 	"github.com/sirupsen/logrus"
 	"gopkg.in/natefinch/lumberjack.v2"
 )
@@ -148,6 +150,14 @@ func RandomString(n int) string {
 	return string(b)
 }
 
+func RandomToken32() (string, error) {
+	b := make([]byte, 24)
+	if _, err := crand.Read(b); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(b), nil
+}
+
 // https://www.alexedwards.net/blog/how-to-properly-parse-a-json-request-body
 
 // MalformedRequest is MalformedRequest
@@ -163,7 +173,7 @@ func (mr *MalformedRequest) Error() string {
 // DecodeJSONBody parses and verifies JSON body
 func DecodeJSONBody(w http.ResponseWriter, r *http.Request, dst interface{}) error {
 	if r.Header.Get("Content-Type") != "" {
-		value, _ := header.ParseValueAndParams(r.Header, "Content-Type")
+		value, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type"))
 		if value != "application/json" {
 			msg := "Content-Type header is not application/json"
 			return &MalformedRequest{Status: http.StatusUnsupportedMediaType, Msg: msg}

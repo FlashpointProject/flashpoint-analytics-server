@@ -12,7 +12,6 @@ import (
 
 	"github.com/Dri0m/flashpoint-analytics-server/utils"
 	"github.com/gorilla/mux"
-	"github.com/gorilla/schema"
 	"github.com/joho/godotenv"
 	"github.com/oschwald/geoip2-golang"
 	"github.com/sirupsen/logrus"
@@ -28,7 +27,6 @@ type App struct {
 	DAL          *DAL
 	l            *logrus.Entry
 	collectQueue chan *Event
-	decoder      *schema.Decoder
 	mmdb         *geoip2.Reader
 }
 
@@ -47,8 +45,6 @@ func main() {
 	db := OpenDatabase(l, conf)
 	defer db.Close()
 
-	decoder := schema.NewDecoder()
-
 	app := App{
 		DAL: &DAL{
 			pool:         db,
@@ -56,7 +52,6 @@ func main() {
 		},
 		l:            l,
 		collectQueue: make(chan *Event, 100000),
-		decoder:      decoder,
 	}
 
 	mmdb, err := geoip2.Open("GeoLite2-Country.mmdb")
@@ -74,6 +69,13 @@ func main() {
 	r.HandleFunc("/data/online", app.KeyAuth(conf.ReadKey, app.GetCurrentlyOnlineHandler)).Methods("POST")
 	r.HandleFunc("/data/events-raw", app.KeyAuth(conf.ReadKey, app.GetRawEventsHandler)).Methods("POST")
 	r.HandleFunc("/data/events-count", app.KeyAuth(conf.ReadKey, app.GetEventCountHandler)).Methods("POST")
+	r.HandleFunc("/data/chart/active-now", app.KeyAuth(conf.ReadKey, app.GetActiveNowHandler)).Methods("POST")
+	r.HandleFunc("/data/chart/active-users", app.KeyAuth(conf.ReadKey, app.GetActiveUsersChartHandler)).Methods("POST")
+	r.HandleFunc("/data/chart/active-countries", app.KeyAuth(conf.ReadKey, app.GetActiveCountriesHandler)).Methods("POST")
+	r.HandleFunc("/data/chart/top-games", app.KeyAuth(conf.ReadKey, app.GetTopGamesHandler)).Methods("POST")
+	r.HandleFunc("/data/chart/game-launch-total", app.KeyAuth(conf.ReadKey, app.GetGameLaunchTotalHandler)).Methods("POST")
+	r.HandleFunc("/data/chart/hardware-trends", app.KeyAuth(conf.ReadKey, app.GetHardwareTrendsHandler)).Methods("POST")
+	r.HandleFunc("/data/chart/activity-heatmap", app.KeyAuth(conf.ReadKey, app.GetActivityHeatmapHandler)).Methods("GET", "POST")
 
 	// r.HandleFunc("/fill-fake-data", app.FillFakeDataHandler).Methods("GET")
 	r.HandleFunc("/ingest-stuff", app.IngestStuffHandler).Methods("GET")
@@ -99,14 +101,21 @@ func main() {
 	}
 
 	l.WithField("port", conf.Port).Infoln("starting the server...")
+	serverErr := make(chan error, 1)
 	go func() {
-		srv.ListenAndServe()
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			serverErr <- err
+		}
 	}()
 
 	term := make(chan os.Signal, 1)
 	signal.Notify(term, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
-	<-term
-	l.Infoln("signal received")
+	select {
+	case <-term:
+		l.Infoln("signal received")
+	case err := <-serverErr:
+		l.WithError(err).Fatalln("server failed")
+	}
 
 	l.Infoln("shutting down the server...")
 	if err := srv.Shutdown(context.Background()); err != nil {
