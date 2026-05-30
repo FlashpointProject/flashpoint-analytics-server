@@ -78,7 +78,7 @@ func main() {
 	r.HandleFunc("/data/chart/activity-heatmap", app.KeyAuth(conf.ReadKey, app.GetActivityHeatmapHandler)).Methods("GET", "POST")
 
 	// r.HandleFunc("/fill-fake-data", app.FillFakeDataHandler).Methods("GET")
-	r.HandleFunc("/ingest-stuff", app.IngestStuffHandler).Methods("GET")
+	// r.HandleFunc("/ingest-stuff", app.IngestStuffHandler).Methods("GET")
 	http.Handle("/", r)
 
 	ctx, cancelFunc := context.WithCancel(context.Background())
