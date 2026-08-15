@@ -1,33 +1,24 @@
 module github.com/Dri0m/flashpoint-analytics-server
 
-go 1.18
+go 1.26
 
 require (
-	github.com/felixge/httpsnoop v1.0.3
-	github.com/golang/gddo v0.0.0-20210115222349-20d68f94ee1f
-	github.com/google/uuid v1.3.0
-	github.com/gorilla/mux v1.8.0
-	github.com/gorilla/schema v1.2.0
-	github.com/jackc/pgx/v4 v4.16.1
-	github.com/joho/godotenv v1.4.0
-	github.com/oschwald/geoip2-golang v1.7.0
-	github.com/sirupsen/logrus v1.8.1
-	gopkg.in/natefinch/lumberjack.v2 v2.0.0
+	github.com/felixge/httpsnoop v1.0.4
+	github.com/google/uuid v1.6.0
+	github.com/gorilla/mux v1.8.1
+	github.com/jackc/pgx/v5 v5.9.2
+	github.com/joho/godotenv v1.5.1
+	github.com/oschwald/geoip2-golang v1.13.0
+	github.com/sirupsen/logrus v1.9.4
+	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 )
 
 require (
-	github.com/BurntSushi/toml v1.1.0 // indirect
-	github.com/jackc/chunkreader/v2 v2.0.1 // indirect
-	github.com/jackc/pgconn v1.12.1 // indirect
-	github.com/jackc/pgio v1.0.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
-	github.com/jackc/pgproto3/v2 v2.3.0 // indirect
-	github.com/jackc/pgservicefile v0.0.0-20200714003250-2b9c44734f2b // indirect
-	github.com/jackc/pgtype v1.11.0 // indirect
-	github.com/jackc/puddle v1.2.1 // indirect
-	github.com/oschwald/maxminddb-golang v1.9.0 // indirect
-	golang.org/x/crypto v0.0.0-20210711020723-a769d52b0f97 // indirect
-	golang.org/x/sys v0.0.0-20220325203850-36772127a21f // indirect
-	golang.org/x/text v0.3.7 // indirect
-	gopkg.in/yaml.v2 v2.4.0 // indirect
+	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
+	github.com/jackc/puddle/v2 v2.2.2 // indirect
+	github.com/oschwald/maxminddb-golang v1.13.0 // indirect
+	golang.org/x/sync v0.17.0 // indirect
+	golang.org/x/sys v0.20.0 // indirect
+	golang.org/x/text v0.29.0 // indirect
 )

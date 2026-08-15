@@ -289,6 +289,142 @@ type EventCountResponse struct {
 	Result []EventCount `json:"result"`
 }
 
+type ChartRangeRequest struct {
+	Range      string  `json:"range"`
+	To         *uint64 `json:"to,omitempty"`
+	CountryISO *string `json:"country_iso_code,omitempty"`
+}
+
+type HardwareTrendsRequest struct {
+	Range       string  `json:"range"`
+	To          *uint64 `json:"to,omitempty"`
+	CountryISO  *string `json:"country_iso_code,omitempty"`
+	HardwareKey *string `json:"hardware_key,omitempty"`
+}
+
+type ActiveUsersChartResponse struct {
+	Result []CurrentlyOnline `json:"result"`
+}
+
+type ActiveNowRequest struct {
+	From *uint64 `json:"from,omitempty"`
+	To   *uint64 `json:"to,omitempty"`
+}
+
+type ActiveNowResponse struct {
+	OnlineCount uint64 `json:"online_count"`
+}
+
+type ActiveCountriesResponse struct {
+	Result []ActiveCountry `json:"result"`
+}
+
+type TopGamesRequest struct {
+	Range      string  `json:"range"`
+	To         *uint64 `json:"to,omitempty"`
+	Limit      *uint64 `json:"limit,omitempty"`
+	CountryISO *string `json:"country_iso_code,omitempty"`
+}
+
+type TopGamesResponse struct {
+	Result []TopGame `json:"result"`
+}
+
+type GameLaunchTotalRequest struct {
+	From *uint64 `json:"from,omitempty"`
+	To   *uint64 `json:"to,omitempty"`
+}
+
+type GameLaunchTotalResponse struct {
+	Count uint64 `json:"count"`
+}
+
+type HardwareTrendsResponse struct {
+	Result []HardwareTrendRow `json:"result"`
+}
+
+type ActivityHeatmapResponse struct {
+	Result []ActivityHeatmapRow `json:"result"`
+}
+
+type AnalyticsRange struct {
+	Name     string
+	From     time.Time
+	To       time.Time
+	Bucket   time.Duration
+	Duration time.Duration
+}
+
+func parseAnalyticsRange(name string, to *uint64) (*AnalyticsRange, error) {
+	end := time.Now().UTC()
+	if to != nil {
+		end = time.Unix(int64(*to), 0).UTC()
+	}
+
+	var duration time.Duration
+	var bucket time.Duration
+	switch name {
+	case "24h":
+		duration = 24 * time.Hour
+		bucket = time.Hour
+	case "30d":
+		duration = 30 * 24 * time.Hour
+		bucket = 24 * time.Hour
+	case "year":
+		duration = 365 * 24 * time.Hour
+		bucket = 7 * 24 * time.Hour
+	default:
+		return nil, fmt.Errorf(`invalid "range" parameter, must be one of [ "24h", "30d", "year" ]`)
+	}
+
+	end = end.Truncate(bucket)
+	return &AnalyticsRange{
+		Name:     name,
+		From:     end.Add(-duration),
+		To:       end,
+		Bucket:   bucket,
+		Duration: duration,
+	}, nil
+}
+
+func parseActivityHeatmapRange(name string, to *uint64) (*AnalyticsRange, error) {
+	if name != "30d" && name != "year" {
+		return nil, fmt.Errorf(`invalid "range" parameter, must be one of [ "30d", "year" ]`)
+	}
+	return parseAnalyticsRange(name, to)
+}
+
+func normalizeCountryISO(countryISO *string) (*string, error) {
+	if countryISO == nil {
+		return nil, nil
+	}
+
+	normalized := strings.ToUpper(strings.TrimSpace(*countryISO))
+	if len(normalized) < 2 || len(normalized) > 3 {
+		return nil, fmt.Errorf(`invalid "country_iso_code" parameter, must be a 2-3 letter code`)
+	}
+	for _, r := range normalized {
+		if r < 'A' || r > 'Z' {
+			return nil, fmt.Errorf(`invalid "country_iso_code" parameter, must be a 2-3 letter code`)
+		}
+	}
+	return &normalized, nil
+}
+
+func normalizeHardwareKey(hardwareKey *string) (*string, error) {
+	if hardwareKey == nil {
+		return nil, nil
+	}
+
+	normalized := strings.TrimSpace(*hardwareKey)
+	switch normalized {
+	case "memory", "arch", "operatingSystem":
+		return &normalized, nil
+	default:
+		return nil, fmt.Errorf(`invalid "hardware_key" parameter, must be one of [ "memory", "arch", "operatingSystem" ]`)
+	}
+}
+
 func (a *App) GetEventCountHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -314,6 +450,269 @@ func (a *App) GetEventCountHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
+}
+
+func (a *App) GetActiveUsersChartHandler(w http.ResponseWriter, r *http.Request) {
+	req := &ChartRangeRequest{}
+	if err := utils.DecodeJSONBody(w, r, req); err != nil {
+		a.l.Error(err)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	analyticsRange, err := parseAnalyticsRange(req.Range, req.To)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), time.Hour)
+	defer cancel()
+
+	result, err := a.DAL.GetActiveUsersChart(ctx, analyticsRange.From, analyticsRange.To, analyticsRange.Bucket)
+	if err != nil {
+		a.l.Error(err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(ActiveUsersChartResponse{Result: result})
+}
+
+func (a *App) GetActiveNowHandler(w http.ResponseWriter, r *http.Request) {
+	req := &ActiveNowRequest{}
+	if err := utils.DecodeJSONBody(w, r, req); err != nil {
+		a.l.Error(err)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	to := time.Now().UTC()
+	if req.To != nil {
+		to = time.Unix(int64(*req.To), 0).UTC()
+	}
+	from := to.Add(-15 * time.Minute)
+	if req.From != nil {
+		from = time.Unix(int64(*req.From), 0).UTC()
+	}
+	if !from.Before(to) {
+		http.Error(w, `"from" must be before "to"`, http.StatusBadRequest)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), time.Hour)
+	defer cancel()
+
+	count, err := a.DAL.GetActiveNow(ctx, from, to)
+	if err != nil {
+		a.l.Error(err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(ActiveNowResponse{OnlineCount: count})
+}
+
+func (a *App) GetActiveCountriesHandler(w http.ResponseWriter, r *http.Request) {
+	req := &ChartRangeRequest{}
+	if err := utils.DecodeJSONBody(w, r, req); err != nil {
+		a.l.Error(err)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	analyticsRange, err := parseAnalyticsRange(req.Range, req.To)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), time.Hour)
+	defer cancel()
+
+	result, err := a.DAL.GetActiveCountries(ctx, analyticsRange.From, analyticsRange.To)
+	if err != nil {
+		a.l.Error(err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(ActiveCountriesResponse{Result: result})
+}
+
+func (a *App) GetTopGamesHandler(w http.ResponseWriter, r *http.Request) {
+	req := &TopGamesRequest{}
+	if err := utils.DecodeJSONBody(w, r, req); err != nil {
+		a.l.Error(err)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	analyticsRange, err := parseAnalyticsRange(req.Range, req.To)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	limit := uint64(10)
+	if req.Limit != nil {
+		limit = *req.Limit
+	}
+	if limit == 0 || limit > 100 {
+		http.Error(w, `invalid "limit" parameter, must be between 1 and 100`, http.StatusBadRequest)
+		return
+	}
+
+	countryISO, err := normalizeCountryISO(req.CountryISO)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), time.Hour)
+	defer cancel()
+
+	var result []TopGame
+	if countryISO != nil {
+		result, err = a.DAL.GetTopGamesByCountry(ctx, analyticsRange.From, analyticsRange.To, limit, *countryISO)
+	} else {
+		result, err = a.DAL.GetTopGames(ctx, analyticsRange.From, analyticsRange.To, limit)
+	}
+	if err != nil {
+		a.l.Error(err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(TopGamesResponse{Result: result})
+}
+
+func (a *App) GetGameLaunchTotalHandler(w http.ResponseWriter, r *http.Request) {
+	req := &GameLaunchTotalRequest{}
+	if err := utils.DecodeJSONBody(w, r, req); err != nil {
+		a.l.Error(err)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	from := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+	if req.From != nil {
+		from = time.Unix(int64(*req.From), 0).UTC()
+	}
+	to := time.Now().UTC()
+	if req.To != nil {
+		to = time.Unix(int64(*req.To), 0).UTC()
+	}
+	if !from.Before(to) {
+		http.Error(w, `"from" must be before "to"`, http.StatusBadRequest)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), time.Hour)
+	defer cancel()
+
+	count, err := a.DAL.GetGameLaunchTotal(ctx, from, to)
+	if err != nil {
+		a.l.Error(err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(GameLaunchTotalResponse{Count: count})
+}
+
+func (a *App) GetHardwareTrendsHandler(w http.ResponseWriter, r *http.Request) {
+	req := &HardwareTrendsRequest{}
+	if err := utils.DecodeJSONBody(w, r, req); err != nil {
+		a.l.Error(err)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	analyticsRange, err := parseAnalyticsRange(req.Range, req.To)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	countryISO, err := normalizeCountryISO(req.CountryISO)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	hardwareKey, err := normalizeHardwareKey(req.HardwareKey)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), time.Hour)
+	defer cancel()
+
+	result, err := a.DAL.GetHardwareTrends(ctx, analyticsRange.From, analyticsRange.To, analyticsRange.Bucket, hardwareKey, countryISO)
+	if err != nil {
+		a.l.Error(err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(HardwareTrendsResponse{Result: result})
+}
+
+func (a *App) GetActivityHeatmapHandler(w http.ResponseWriter, r *http.Request) {
+	req := &ChartRangeRequest{}
+	if r.Method == http.MethodGet {
+		req.Range = r.URL.Query().Get("range")
+		if rawCountry := r.URL.Query().Get("country_iso_code"); rawCountry != "" {
+			req.CountryISO = &rawCountry
+		}
+		if rawTo := r.URL.Query().Get("to"); rawTo != "" {
+			to, err := strconv.ParseUint(rawTo, 10, 64)
+			if err != nil {
+				http.Error(w, `invalid "to" parameter`, http.StatusBadRequest)
+				return
+			}
+			req.To = &to
+		}
+	} else {
+		if err := utils.DecodeJSONBody(w, r, req); err != nil {
+			a.l.Error(err)
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
+
+	analyticsRange, err := parseActivityHeatmapRange(req.Range, req.To)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	countryISO, err := normalizeCountryISO(req.CountryISO)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), time.Hour)
+	defer cancel()
+
+	result, err := a.DAL.GetActivityHeatmap(ctx, analyticsRange.From, analyticsRange.To, countryISO)
+	if err != nil {
+		a.l.Error(err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(ActivityHeatmapResponse{Result: result})
 }
 
 type IngestStuffFormat struct {

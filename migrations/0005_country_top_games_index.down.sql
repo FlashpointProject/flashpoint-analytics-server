@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS event_game_launch_created_at_session_idx;

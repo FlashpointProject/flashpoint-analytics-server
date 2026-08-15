@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/jackc/pgx/v4"
-	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/sirupsen/logrus"
 )
 
@@ -19,7 +19,7 @@ func panicErr(l *logrus.Entry, err error) {
 // OpenDatabase returns connection pool or panics
 func OpenDatabase(l *logrus.Entry, ip, port, user, password, dbname string) *pgxpool.Pool {
 	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable", ip, port, user, password, dbname)
-	db, err := pgxpool.Connect(context.Background(), dsn)
+	db, err := pgxpool.New(context.Background(), dsn)
 	panicErr(l, err)
 
 	conn, err := db.Acquire(context.Background())

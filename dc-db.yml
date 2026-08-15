@@ -20,7 +20,7 @@ services:
     ports:
       - "5432:5432" # TODO unmap in prod
     volumes:
-      - analytics-data:/var/lib/postgresql/data
+      - analytics-data:/home/postgres/pgdata/data
     networks:
       marketnetwork:
         ipv4_address: 10.5.0.2
