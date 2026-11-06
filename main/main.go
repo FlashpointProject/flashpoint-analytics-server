@@ -31,9 +31,12 @@ type App struct {
 }
 
 func main() {
-	err := godotenv.Load()
-	if err != nil {
-		panic(err)
+	// Optional local-development convenience: load .env if present.
+	// Variables already set in the environment are never overridden.
+	if _, statErr := os.Stat(".env"); statErr == nil {
+		if err := godotenv.Load(); err != nil {
+			panic(err)
+		}
 	}
 
 	log := utils.InitLogger()
@@ -94,7 +97,7 @@ func main() {
 
 	srv := &http.Server{
 		Handler: utils.LogRequestHandler(l, r),
-		Addr:    fmt.Sprintf("127.0.0.1:%d", conf.Port),
+		Addr:    fmt.Sprintf("0.0.0.0:%d", conf.Port),
 		// Good practice: enforce timeouts for servers you create!
 		WriteTimeout: 6000 * time.Second,
 		ReadTimeout:  6000 * time.Second,

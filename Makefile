@@ -1,5 +1,5 @@
 #!make
-include .env
+-include .env
 export $(shell sed 's/=.*//' .env)
 
 .PHONY: db db-up migrate run seed
